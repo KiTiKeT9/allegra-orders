@@ -16,8 +16,23 @@ autoUpdater.autoInstallOnAppQuit = true;
 let updateCheckInterval = null;
 
 function setupAutoUpdater() {
+    const isDev = !app.isPackaged;
+    const updateYamlPath = path.join(__dirname, 'app-update.yml');
+    const hasUpdateYaml = fs.existsSync(updateYamlPath);
+
+    if (isDev && !hasUpdateYaml) {
+        pushLog('Автообновление отключено (dev-режим без app-update.yml)', 'warn');
+        return;
+    }
+
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
     autoUpdater.on('checking-for-update', () => {
         pushLog('Проверка обновлений...', 'info');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-checking');
+        }
     });
     autoUpdater.on('update-available', (info) => {
         pushLog(`Доступна новая версия: ${info.version}`, 'info');
@@ -25,9 +40,15 @@ function setupAutoUpdater() {
     });
     autoUpdater.on('update-not-available', () => {
         pushLog('Обновлений не найдено', 'info');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-not-available');
+        }
     });
     autoUpdater.on('download-progress', (progress) => {
         pushLog(`Загрузка обновления: ${Math.round(progress.percent)}%`, 'info');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-progress', Math.round(progress.percent));
+        }
     });
     autoUpdater.on('update-downloaded', (info) => {
         pushLog(`Обновление ${info.version} загружено. Установится при перезапуске.`, 'success');
@@ -37,9 +58,15 @@ function setupAutoUpdater() {
     });
     autoUpdater.on('error', (err) => {
         pushLog('Ошибка обновления: ' + err.message, 'error');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-error', 'Не удалось проверить обновления. Проверьте интернет-соединение.');
+        }
     });
 
-    autoUpdater.checkForUpdates();
+    setTimeout(() => {
+        autoUpdater.checkForUpdates();
+    }, 5000);
+
     updateCheckInterval = setInterval(() => {
         autoUpdater.checkForUpdates();
     }, 3600000);

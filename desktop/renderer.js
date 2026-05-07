@@ -44,11 +44,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Update notifications
+    ipcRenderer.on('update-checking', () => {
+        showToast('Проверка обновлений...', 'info');
+    });
     ipcRenderer.on('update-available', (event, version) => {
         showUpdateBanner(version, false);
     });
+    ipcRenderer.on('update-not-available', () => {
+        showToast('У вас актуальная версия', 'success');
+    });
+    ipcRenderer.on('update-progress', (event, percent) => {
+        showUpdateBanner(null, false, percent);
+    });
     ipcRenderer.on('update-downloaded', (event, version) => {
         showUpdateBanner(version, true);
+    });
+    ipcRenderer.on('update-error', (event, message) => {
+        showToast(message, 'error');
     });
 });
 
@@ -300,31 +312,63 @@ function escapeHtml(t) {
 
 /* UPDATE NOTIFICATIONS */
 
-function showUpdateBanner(version, isDownloaded) {
-    const existing = document.getElementById('update-banner');
-    if (existing) existing.remove();
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <span class="material-icons">${type === 'success' ? 'check_circle' : type === 'error' ? 'error' : 'info'}</span>
+        <span>${message}</span>
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.classList.add('show'), 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
 
-    const banner = document.createElement('div');
-    banner.id = 'update-banner';
-    banner.className = 'update-banner';
+function showUpdateBanner(version, isDownloaded, progress = null) {
+    let banner = document.getElementById('update-banner');
 
-    const text = isDownloaded
-        ? `Доступна новая версия ${version}. Перезапустить для установки?`
-        : `Загружается обновление ${version}...`;
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'update-banner';
+        banner.className = 'update-banner';
+        document.body.appendChild(banner);
+    }
 
-    banner.innerHTML = `
-        <div class="update-banner-content">
-            <span class="material-icons update-icon">system_update</span>
-            <span class="update-text">${text}</span>
-            ${isDownloaded ? `
+    let content = '';
+
+    if (isDownloaded) {
+        content = `
+            <div class="update-banner-content">
+                <span class="material-icons update-icon">system_update</span>
+                <span class="update-text">Доступна новая версия ${version}. Перезапустить?</span>
                 <button class="btn btn-primary btn-sm" id="update-restart-btn">
                     <span class="material-icons" style="font-size:16px">restart_alt</span>
                     Перезапустить
                 </button>
                 <button class="btn btn-ghost btn-sm" id="update-later-btn">Позже</button>
-            ` : '<div class="spinner" style="width:20px;height:20px;border-width:2px"></div>'}
-        </div>
-    `;
+            </div>`;
+    } else if (progress !== null) {
+        content = `
+            <div class="update-banner-content">
+                <span class="material-icons update-icon">system_update</span>
+                <span class="update-text">Загрузка обновления: ${progress}%</span>
+                <div class="update-progress-bar">
+                    <div class="update-progress-fill" style="width:${progress}%"></div>
+                </div>
+            </div>`;
+    } else {
+        content = `
+            <div class="update-banner-content">
+                <span class="material-icons update-icon">system_update</span>
+                <span class="update-text">Доступна новая версия ${version}</span>
+                <div class="spinner" style="width:20px;height:20px;border-width:2px"></div>
+            </div>`;
+    }
+
+    banner.innerHTML = content;
 
     document.body.appendChild(banner);
 
