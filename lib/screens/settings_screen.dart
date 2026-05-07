@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/order_service.dart';
+import '../services/update_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -117,6 +119,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                           : const Text('Проверить и сохранить'),
                     ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Update
+                  _SectionTitle(icon: Icons.system_update, title: 'Обновление'),
+                  const SizedBox(height: 12),
+                  FutureBuilder<PackageInfo>(
+                    future: PackageInfo.fromPlatform(),
+                    builder: (context, snapshot) {
+                      final version = snapshot.hasData ? snapshot.data!.version : '...';
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF161B2E),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0x1AFFFFFF)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline, color: Color(0xFF6366F1), size: 20),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Текущая версия: $version',
+                                      style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8))),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () => UpdateService.checkForUpdate(context, force: true),
+                                      icon: const Icon(Icons.refresh, size: 18),
+                                      label: const Text('Проверить обновления'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: const Color(0xFF6366F1),
+                                        side: const BorderSide(color: Color(0xFF6366F1)),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
 
                   const SizedBox(height: 32),

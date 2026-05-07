@@ -163,6 +163,10 @@ async def delete_order(order_number: str):
 async def health_check():
     return {"status": "ok", "orders_count": len(load_metadata())}
 
+@app.get("/api/version")
+async def get_version():
+    return {"version": "1.0.0", "download_url": "https://github.com/KiTiKeT9/allegra-orders/releases/latest/download/Allegra-Scanner.apk"}
+
 # --- МОНТИРОВАНИЕ ВЕБ-ИНТЕРФЕЙСА ---
 
 if WEB_DIR.exists():

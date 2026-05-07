@@ -347,6 +347,52 @@ html, body {
     .details-grid { gap: 10px; }
 }
 
+/* Update Banner */
+.update-banner {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    background: linear-gradient(135deg, var(--accent), #4f46e5);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.4);
+    animation: slideUp 0.3s ease-out;
+    max-width: 400px;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.update-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+}
+
+.update-icon {
+    font-size: 24px !important;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.update-text {
+    font-size: 14px;
+    font-weight: 500;
+    flex: 1;
+}
+
+.btn-sm {
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+}
+
 @media (max-width: 900px) {
     :root { --sidebar-w: 64px; }
     .sidebar-logo { justify-content: center; padding: 0; }

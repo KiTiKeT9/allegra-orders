@@ -33,6 +33,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         setInterval(loadOrders, 15000);
     }
     await updateServerInfo();
+
+    // Update notifications
+    ipcRenderer.on('update-available', (event, version) => {
+        showUpdateBanner(version, false);
+    });
+    ipcRenderer.on('update-downloaded', (event, version) => {
+        showUpdateBanner(version, true);
+    });
 });
 
 function switchTab(tab) {
@@ -266,4 +274,44 @@ function escapeHtml(t) {
     const d = document.createElement('div');
     d.innerText = t;
     return d.innerHTML;
+}
+
+/* UPDATE NOTIFICATIONS */
+
+function showUpdateBanner(version, isDownloaded) {
+    const existing = document.getElementById('update-banner');
+    if (existing) existing.remove();
+
+    const banner = document.createElement('div');
+    banner.id = 'update-banner';
+    banner.className = 'update-banner';
+
+    const text = isDownloaded
+        ? `Доступна новая версия ${version}. Перезапустить для установки?`
+        : `Загружается обновление ${version}...`;
+
+    banner.innerHTML = `
+        <div class="update-banner-content">
+            <span class="material-icons update-icon">system_update</span>
+            <span class="update-text">${text}</span>
+            ${isDownloaded ? `
+                <button class="btn btn-primary btn-sm" id="update-restart-btn">
+                    <span class="material-icons" style="font-size:16px">restart_alt</span>
+                    Перезапустить
+                </button>
+                <button class="btn btn-ghost btn-sm" id="update-later-btn">Позже</button>
+            ` : '<div class="spinner" style="width:20px;height:20px;border-width:2px"></div>'}
+        </div>
+    `;
+
+    document.body.appendChild(banner);
+
+    if (isDownloaded) {
+        document.getElementById('update-restart-btn').addEventListener('click', async () => {
+            await ipcRenderer.invoke('quit-and-install');
+        });
+        document.getElementById('update-later-btn').addEventListener('click', () => {
+            banner.remove();
+        });
+    }
 }

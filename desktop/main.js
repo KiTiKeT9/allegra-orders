@@ -2,10 +2,62 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const net = require('net');
+
+const { autoUpdater } = require('electron-updater');
+
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+let updateCheckInterval = null;
+
+function setupAutoUpdater() {
+    autoUpdater.on('checking-for-update', () => {
+        pushLog('Проверка обновлений...', 'info');
+    });
+    autoUpdater.on('update-available', (info) => {
+        pushLog(`Доступна новая версия: ${info.version}`, 'info');
+        showUpdateNotification(info.version);
+    });
+    autoUpdater.on('update-not-available', () => {
+        pushLog('Обновлений не найдено', 'info');
+    });
+    autoUpdater.on('download-progress', (progress) => {
+        pushLog(`Загрузка обновления: ${Math.round(progress.percent)}%`, 'info');
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+        pushLog(`Обновление ${info.version} загружено. Установится при перезапуске.`, 'success');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-downloaded', info.version);
+        }
+    });
+    autoUpdater.on('error', (err) => {
+        pushLog('Ошибка обновления: ' + err.message, 'error');
+    });
+
+    autoUpdater.checkForUpdates();
+    updateCheckInterval = setInterval(() => {
+        autoUpdater.checkForUpdates();
+    }, 3600000);
+}
+
+function showUpdateNotification(version) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-available', version);
+    }
+}
+
+ipcMain.handle('check-for-updates', () => {
+    return autoUpdater.checkForUpdates();
+});
+
+ipcMain.handle('quit-and-install', () => {
+    autoUpdater.quitAndInstall();
+});
 
 let mainWindow;
 let serverInstance = null;
@@ -295,8 +347,15 @@ function createWindow() {
   startInternalServer();
 }
 
-app.whenReady().then(createWindow);
-app.on('window-all-closed', () => { stopInternalServer(); if (process.platform !== 'darwin') app.quit(); });
+app.whenReady().then(() => {
+    createWindow();
+    setupAutoUpdater();
+});
+app.on('window-all-closed', () => {
+    if (updateCheckInterval) clearInterval(updateCheckInterval);
+    stopInternalServer();
+    if (process.platform !== 'darwin') app.quit();
+});
 
 // IPC
 ipcMain.handle('get-orders', async () => Object.values(loadMetadata()).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)));
