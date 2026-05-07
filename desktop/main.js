@@ -8,83 +8,103 @@ const cors = require('cors');
 const multer = require('multer');
 const net = require('net');
 
-const { autoUpdater } = require('electron-updater');
-
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
+const GITHUB_REPO = 'KiTiKeT9/allegra-orders';
+const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 
 let updateCheckInterval = null;
 
-function setupAutoUpdater() {
-    const isDev = !app.isPackaged;
-    const updateYamlPath = path.join(__dirname, 'app-update.yml');
-    const hasUpdateYaml = fs.existsSync(updateYamlPath);
-
-    if (isDev && !hasUpdateYaml) {
-        pushLog('Автообновление отключено (dev-режим без app-update.yml)', 'warn');
-        return;
+function compareVersions(current, latest) {
+    const currentParts = current.replace('v', '').split('.').map(Number);
+    const latestParts = latest.replace('v', '').split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        const c = currentParts[i] || 0;
+        const l = latestParts[i] || 0;
+        if (l > c) return 1;
+        if (l < c) return -1;
     }
+    return 0;
+}
 
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
+function checkGitHubUpdate() {
+    return new Promise((resolve, reject) => {
+        const req = https.get(GITHUB_API_URL, {
+            headers: {
+                'User-Agent': 'Allegra-Orders-App',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json.tag_name) {
+                        resolve({
+                            version: json.tag_name,
+                            url: json.html_url,
+                            notes: json.body || '',
+                            published_at: json.published_at
+                        });
+                    } else {
+                        reject(new Error('No release found'));
+                    }
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
+        req.on('error', reject);
+        req.setTimeout(10000, () => {
+            req.destroy();
+            reject(new Error('Timeout'));
+        });
+    });
+}
 
-    autoUpdater.on('checking-for-update', () => {
+async function setupAutoUpdater() {
+    const currentVersion = app.getVersion();
+
+    const doCheck = async () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+
+        mainWindow.webContents.send('update-checking');
         pushLog('Проверка обновлений...', 'info');
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('update-checking');
+
+        try {
+            const release = await checkGitHubUpdate();
+            const cmp = compareVersions(currentVersion, release.version);
+
+            if (cmp < 0) {
+                pushLog(`Доступна новая версия: ${release.version}`, 'info');
+                mainWindow.webContents.send('update-available', {
+                    version: release.version,
+                    url: release.url,
+                    notes: release.notes
+                });
+            } else {
+                pushLog('Обновлений не найдено', 'info');
+                mainWindow.webContents.send('update-not-available');
+            }
+        } catch (err) {
+            pushLog('Ошибка проверки обновлений: ' + err.message, 'warn');
+            mainWindow.webContents.send('update-error', 'Не удалось проверить обновления');
         }
-    });
-    autoUpdater.on('update-available', (info) => {
-        pushLog(`Доступна новая версия: ${info.version}`, 'info');
-        showUpdateNotification(info.version);
-    });
-    autoUpdater.on('update-not-available', () => {
-        pushLog('Обновлений не найдено', 'info');
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('update-not-available');
-        }
-    });
-    autoUpdater.on('download-progress', (progress) => {
-        pushLog(`Загрузка обновления: ${Math.round(progress.percent)}%`, 'info');
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('update-progress', Math.round(progress.percent));
-        }
-    });
-    autoUpdater.on('update-downloaded', (info) => {
-        pushLog(`Обновление ${info.version} загружено. Установится при перезапуске.`, 'success');
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('update-downloaded', info.version);
-        }
-    });
-    autoUpdater.on('error', (err) => {
-        pushLog('Ошибка обновления: ' + err.message, 'error');
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('update-error', 'Не удалось проверить обновления. Проверьте интернет-соединение.');
-        }
+    };
+
+    ipcMain.handle('check-for-updates', doCheck);
+
+    ipcMain.handle('open-update-url', async (event, url) => {
+        await shell.openExternal(url || GITHUB_RELEASES_URL);
     });
 
-    setTimeout(() => {
-        autoUpdater.checkForUpdates();
-    }, 5000);
+    ipcMain.handle('quit-and-install', () => {
+        app.quit();
+    });
 
-    updateCheckInterval = setInterval(() => {
-        autoUpdater.checkForUpdates();
-    }, 3600000);
+    setTimeout(doCheck, 5000);
+    updateCheckInterval = setInterval(doCheck, 3600000);
 }
-
-function showUpdateNotification(version) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-available', version);
-    }
-}
-
-ipcMain.handle('check-for-updates', () => {
-    return autoUpdater.checkForUpdates();
-});
-
-ipcMain.handle('quit-and-install', () => {
-    autoUpdater.quitAndInstall();
-});
 
 let mainWindow;
 let serverInstance = null;

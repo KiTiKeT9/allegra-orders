@@ -47,17 +47,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     ipcRenderer.on('update-checking', () => {
         showToast('Проверка обновлений...', 'info');
     });
-    ipcRenderer.on('update-available', (event, version) => {
-        showUpdateBanner(version, false);
+    ipcRenderer.on('update-available', (event, data) => {
+        showUpdateBanner(data);
     });
     ipcRenderer.on('update-not-available', () => {
         showToast('У вас актуальная версия', 'success');
-    });
-    ipcRenderer.on('update-progress', (event, percent) => {
-        showUpdateBanner(null, false, percent);
-    });
-    ipcRenderer.on('update-downloaded', (event, version) => {
-        showUpdateBanner(version, true);
     });
     ipcRenderer.on('update-error', (event, message) => {
         showToast(message, 'error');
@@ -327,57 +321,39 @@ function showToast(message, type = 'info') {
     }, 3000);
 }
 
-function showUpdateBanner(version, isDownloaded, progress = null) {
+function showUpdateBanner(data) {
     let banner = document.getElementById('update-banner');
+    if (banner) banner.remove();
 
-    if (!banner) {
-        banner = document.createElement('div');
-        banner.id = 'update-banner';
-        banner.className = 'update-banner';
-        document.body.appendChild(banner);
-    }
+    banner = document.createElement('div');
+    banner.id = 'update-banner';
+    banner.className = 'update-banner';
 
-    let content = '';
+    const version = data.version || '';
+    const url = data.url || 'https://github.com/KiTiKeT9/allegra-orders/releases';
+    const notes = data.notes || '';
 
-    if (isDownloaded) {
-        content = `
-            <div class="update-banner-content">
-                <span class="material-icons update-icon">system_update</span>
-                <span class="update-text">Доступна новая версия ${version}. Перезапустить?</span>
-                <button class="btn btn-primary btn-sm" id="update-restart-btn">
-                    <span class="material-icons" style="font-size:16px">restart_alt</span>
-                    Перезапустить
-                </button>
-                <button class="btn btn-ghost btn-sm" id="update-later-btn">Позже</button>
-            </div>`;
-    } else if (progress !== null) {
-        content = `
-            <div class="update-banner-content">
-                <span class="material-icons update-icon">system_update</span>
-                <span class="update-text">Загрузка обновления: ${progress}%</span>
-                <div class="update-progress-bar">
-                    <div class="update-progress-fill" style="width:${progress}%"></div>
-                </div>
-            </div>`;
-    } else {
-        content = `
-            <div class="update-banner-content">
-                <span class="material-icons update-icon">system_update</span>
+    banner.innerHTML = `
+        <div class="update-banner-content">
+            <span class="material-icons update-icon">system_update</span>
+            <div class="update-info">
                 <span class="update-text">Доступна новая версия ${version}</span>
-                <div class="spinner" style="width:20px;height:20px;border-width:2px"></div>
-            </div>`;
-    }
-
-    banner.innerHTML = content;
+                ${notes ? `<span class="update-notes">${escapeHtml(notes.substring(0, 100))}${notes.length > 100 ? '...' : ''}</span>` : ''}
+            </div>
+            <button class="btn btn-primary btn-sm" id="update-download-btn">
+                <span class="material-icons" style="font-size:16px">download</span>
+                Скачать
+            </button>
+            <button class="btn btn-ghost btn-sm" id="update-later-btn">Позже</button>
+        </div>`;
 
     document.body.appendChild(banner);
 
-    if (isDownloaded) {
-        document.getElementById('update-restart-btn').addEventListener('click', async () => {
-            await ipcRenderer.invoke('quit-and-install');
-        });
-        document.getElementById('update-later-btn').addEventListener('click', () => {
-            banner.remove();
-        });
-    }
+    document.getElementById('update-download-btn').addEventListener('click', async () => {
+        await ipcRenderer.invoke('open-update-url', url);
+        banner.remove();
+    });
+    document.getElementById('update-later-btn').addEventListener('click', () => {
+        banner.remove();
+    });
 }
