@@ -93,7 +93,7 @@ class OrderService extends ChangeNotifier {
         ));
       }
 
-      var streamedResponse = await request.send().timeout(const Duration(seconds: 60));
+      var streamedResponse = await request.send().timeout(const Duration(seconds: 900));
       var response = await http.Response.fromStream(streamedResponse);
 
       _isUploading = false;

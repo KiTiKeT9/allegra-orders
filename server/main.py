@@ -1,6 +1,7 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from typing import List, Optional
 import os
 import shutil
@@ -8,7 +9,17 @@ from datetime import datetime
 import json
 from pathlib import Path
 
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024
+
+class MaxBodySizeMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "POST" and "/api/upload" in str(request.url):
+            request._body = await request.body()
+        response = await call_next(request)
+        return response
+
 app = FastAPI(title="Order Management Server", version="2.3")
+app.add_middleware(MaxBodySizeMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -178,4 +189,4 @@ else:
 if __name__ == "__main__":
     import uvicorn
     UPLOAD_DIR.mkdir(exist_ok=True)
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, limit_max_requests=None, timeout_keep_alive=120)

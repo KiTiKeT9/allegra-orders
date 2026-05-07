@@ -174,7 +174,7 @@ async function startInternalServer() {
     },
     filename: (req, file, cb) => cb(null, file.originalname)
   });
-  const upload = multer({ storage });
+  const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 10 } });
 
   expressApp.post('/api/upload', upload.array('files'), (req, res) => {
     try {
