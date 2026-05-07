@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'upload_screen.dart';
 import 'settings_screen.dart';
+import 'orders_screen.dart';
 import '../services/order_service.dart';
 import '../services/update_service.dart';
 
@@ -311,13 +312,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       onTap: _scanQRFromGallery,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _ActionButton(
                       icon: Icons.keyboard_outlined,
                       label: 'Вручную',
                       color: const Color(0xFFF59E0B),
                       onTap: _showManualEntryDialog,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _ActionButton(
+                      icon: Icons.inventory_2_outlined,
+                      label: 'Заказы',
+                      color: const Color(0xFF10B981),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen())),
                     ),
                   ),
                 ],
