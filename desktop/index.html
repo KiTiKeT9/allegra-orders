@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Allegra Logistics</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body>
+    <div class="app-wrapper">
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">A</div>
+                <span class="logo-text">Allegra</span>
+            </div>
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-tab="orders">
+                    <span class="material-icons">inventory_2</span>
+                    <span>Заказы</span>
+                </button>
+                <button class="nav-item" data-tab="server">
+                    <span class="material-icons">dns</span>
+                    <span>Сервер</span>
+                    <span class="server-dot online" id="serverNavDot"></span>
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator-compact">
+                    <span class="dot online" id="statusDotCompact"></span>
+                    <span id="statusTextCompact">Встроенный</span>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <!-- ЗАКАЗЫ -->
+            <section id="tab-orders" class="tab-panel active">
+                <header class="page-header">
+                    <h1>Заказы</h1>
+                    <div class="header-actions">
+                        <div class="search-box">
+                            <span class="material-icons">search</span>
+                            <input type="text" id="searchInput" placeholder="Поиск по номеру или дате...">
+                        </div>
+                        <button class="btn btn-ghost" onclick="refreshData()" title="Обновить">
+                            <span class="material-icons" id="refreshIcon">refresh</span>
+                        </button>
+                    </div>
+                </header>
+                <div class="orders-scroll" id="ordersScroll">
+                    <div id="ordersContainer"></div>
+                </div>
+            </section>
+
+            <!-- СЕРВЕР -->
+            <section id="tab-server" class="tab-panel">
+                <header class="page-header">
+                    <h1>Сервер</h1>
+                    <div class="header-actions">
+                        <button class="btn btn-ghost" onclick="clearServerLogs()">
+                            <span class="material-icons">clear_all</span>
+                            Очистить
+                        </button>
+                    </div>
+                </header>
+                <div class="server-layout">
+                    <div class="server-info-card">
+                        <h3>Статус</h3>
+                        <div class="server-status-row">
+                            <span class="server-status-label">Состояние:</span>
+                            <span class="server-status-value running">Работает</span>
+                        </div>
+                        <div class="server-status-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+                            <span class="server-status-label">Адреса для подключения:</span>
+                            <div id="serverAddresses" style="display:flex;flex-direction:column;gap:4px">—</div>
+                        </div>
+                        <div class="server-status-row">
+                            <span class="server-status-label">Папка данных:</span>
+                            <span class="server-status-value mono" id="dataDirText">—</span>
+                        </div>
+                        <div class="server-status-row" style="margin-top:10px">
+                            <button class="btn btn-info" onclick="selectDataFolder()">
+                                <span class="material-icons">folder</span>
+                                Сменить папку данных
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="terminal-wrapper">
+                        <div class="terminal-header">
+                            <span class="terminal-title">Логи сервера</span>
+                            <span class="terminal-live active" id="terminalLive">● LIVE</span>
+                        </div>
+                        <div class="terminal" id="serverLogs"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="renderer.js"></script>
+</body>
+</html>

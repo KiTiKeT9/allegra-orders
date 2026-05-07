@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Allegra Scanner</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0B0F19">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <div class="app" id="app">
+        <!-- Экран 1: Сканер -->
+        <section id="scannerScreen" class="screen active">
+            <header class="app-header">
+                <div class="logo-block">
+                    <div class="logo-icon">A</div>
+                    <div>
+                        <h1>Allegra</h1>
+                        <span class="subtitle">Сканер заказов</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <div class="status-dot" id="serverStatus"></div>
+                    <button type="button" class="icon-btn" id="btnManualTop" title="Ввести вручную">
+                        <span class="material-icons">keyboard</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="scanner-wrap">
+                <div class="scanner-box">
+                    <div id="reader"></div>
+                    <div class="scanner-overlay" id="scannerOverlay">
+                        <div class="scan-frame">
+                            <div class="corner top-left"></div>
+                            <div class="corner top-right"></div>
+                            <div class="corner bottom-left"></div>
+                            <div class="corner bottom-right"></div>
+                            <div class="scan-line"></div>
+                        </div>
+                        <p class="scan-hint">Наведите камеру на QR-код заказа</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="scanner-actions">
+                <button type="button" class="action-btn" id="btnManualBottom">
+                    <span class="material-icons">keyboard</span>
+                    <span>Ввести вручную</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Экран 2: Загрузка -->
+        <section id="uploadScreen" class="screen">
+            <header class="app-header compact">
+                <button type="button" class="icon-btn" id="btnBack">
+                    <span class="material-icons">arrow_back_ios_new</span>
+                </button>
+                <h1>Загрузка</h1>
+                <div style="width:40px"></div>
+            </header>
+
+            <div class="content">
+                <div class="order-card">
+                    <div class="order-card-icon">
+                        <span class="material-icons">receipt_long</span>
+                    </div>
+                    <div class="order-card-info">
+                        <span class="label">Номер заказа</span>
+                        <h2 id="orderNumberDisplay">---</h2>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <label class="section-label">Количество коробок</label>
+                    <div class="stepper">
+                        <button type="button" class="stepper-btn" id="btnMinus">
+                            <span class="material-icons">remove</span>
+                        </button>
+                        <input type="number" id="boxCount" value="1">
+                        <button type="button" class="stepper-btn" id="btnPlus">
+                            <span class="material-icons">add</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">
+                        <label class="section-label">Файлы <span id="fileCount">(0)</span></label>
+                        <button type="button" class="text-btn danger" id="btnClear">Очистить</button>
+                    </div>
+                    <div class="file-grid" id="fileGrid">
+                        <label class="add-file" for="photoInput">
+                            <span class="material-icons">add_photo_alternate</span>
+                            <span>Фото</span>
+                        </label>
+                        <label class="add-file" for="videoInput">
+                            <span class="material-icons">videocam</span>
+                            <span>Видео</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="app-footer">
+                <button type="button" class="primary-btn" id="uploadBtn">
+                    <span class="material-icons">cloud_upload</span>
+                    <span id="uploadText">Выберите файлы</span>
+                </button>
+            </footer>
+
+            <input type="file" id="photoInput" multiple accept="image/*" style="display:none">
+            <input type="file" id="videoInput" multiple accept="video/*" style="display:none">
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
