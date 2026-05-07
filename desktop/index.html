@@ -26,6 +26,9 @@
                 </button>
             </nav>
             <div class="sidebar-footer">
+                <div class="sidebar-version">
+                    <span class="version-text" id="appVersion">v1.0.0</span>
+                </div>
                 <div class="status-indicator-compact">
                     <span class="dot online" id="statusDotCompact"></span>
                     <span id="statusTextCompact">Встроенный</span>
@@ -79,10 +82,18 @@
                             <span class="server-status-label">Папка данных:</span>
                             <span class="server-status-value mono" id="dataDirText">—</span>
                         </div>
-                        <div class="server-status-row" style="margin-top:10px">
+                        <div class="server-status-row">
+                            <span class="server-status-label">Версия приложения:</span>
+                            <span class="server-status-value mono" id="appVersionDisplay">—</span>
+                        </div>
+                        <div class="server-status-row" style="margin-top:10px; gap:8px;">
                             <button class="btn btn-info" onclick="selectDataFolder()">
                                 <span class="material-icons">folder</span>
                                 Сменить папку данных
+                            </button>
+                            <button class="btn btn-primary" onclick="checkForUpdates()">
+                                <span class="material-icons">system_update</span>
+                                Проверить обновления
                             </button>
                         </div>
                     </div>

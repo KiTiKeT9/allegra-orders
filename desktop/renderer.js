@@ -34,6 +34,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     await updateServerInfo();
 
+    // Set app version
+    ipcRenderer.invoke('get-app-version').then((version) => {
+        const versionEls = ['appVersion', 'appVersionDisplay'];
+        versionEls.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = `v${version}`;
+        });
+    });
+
     // Update notifications
     ipcRenderer.on('update-available', (event, version) => {
         showUpdateBanner(version, false);
@@ -249,6 +258,19 @@ async function updateServerInfo() {
 window.clearServerLogs = async () => {
     await ipcRenderer.invoke('clear-logs');
     document.getElementById('serverLogs').innerHTML = '';
+};
+
+window.checkForUpdates = async () => {
+    const btn = event.currentTarget;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px"></div>';
+    btn.disabled = true;
+    try {
+        await ipcRenderer.invoke('check-for-updates');
+    } finally {
+        btn.innerHTML = orig;
+        btn.disabled = false;
+    }
 };
 
 window.selectDataFolder = async () => {

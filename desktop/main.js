@@ -393,6 +393,10 @@ ipcMain.handle('server-status', ()=>({
 }));
 ipcMain.handle('clear-logs', ()=>{ serverLogs.length=0; return true; });
 
+ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+});
+
 ipcMain.handle('select-data-folder', async ()=>{
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
   if (!result.canceled && result.filePaths.length > 0) {
