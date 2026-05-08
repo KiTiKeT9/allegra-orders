@@ -22,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final ImagePicker _picker = ImagePicker();
   late AnimationController _pulseController;
   bool _isScanning = true;
+  DateTime? _lastUpdateCheck;
 
   @override
   void initState() {
@@ -32,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     )..repeat(reverse: true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       UpdateService.checkForUpdate(context);
+      _lastUpdateCheck = DateTime.now();
     });
   }
 
@@ -65,7 +67,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         },
         transitionDuration: const Duration(milliseconds: 300),
       ),
-    ).then((_) => setState(() => _isScanning = true));
+    ).then((_) {
+      setState(() => _isScanning = true);
+      _checkUpdateIfNeeded();
+    });
+  }
+
+  void _checkUpdateIfNeeded() {
+    final now = DateTime.now();
+    if (_lastUpdateCheck == null || now.difference(_lastUpdateCheck!).inMinutes > 30) {
+      _lastUpdateCheck = now;
+      UpdateService.checkForUpdate(context);
+    }
   }
 
   Future<void> _scanQRFromGallery() async {
@@ -206,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   ),
                   IconButton(
-                    onPressed: () => Navigator.pushNamed(context, '/settings'),
+                    onPressed: () => Navigator.pushNamed(context, '/settings').then((_) => _checkUpdateIfNeeded()),
                     icon: const Icon(Icons.settings_outlined, color: Color(0xFF94A3B8)),
                   ),
                 ],
