@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../services/order_service.dart';
+import '../services/video_compression_service.dart';
 
 class UploadScreen extends StatefulWidget {
   final String orderNumber;
@@ -23,6 +24,9 @@ class _UploadScreenState extends State<UploadScreen> {
   bool _orderExists = false;
   int _orderWindowsCount = 0;
   bool _isChecking = true;
+  bool _isCompressing = false;
+  double _compressProgress = 0;
+  String _compressStatus = '';
   final TextEditingController _countController = TextEditingController(text: '1');
   final TextEditingController _windowController = TextEditingController(text: '1');
 
@@ -72,19 +76,60 @@ class _UploadScreenState extends State<UploadScreen> {
       return;
     }
     setState(() => _isUploading = true);
+
     try {
+      final processedFiles = <XFile>[];
+      int totalSaved = 0;
+
+      for (int i = 0; i < _selectedFiles.length; i++) {
+        final file = _selectedFiles[i];
+        if (VideoCompressionService.isCompressible(file.path)) {
+          setState(() {
+            _isCompressing = true;
+            _compressStatus = 'Сжатие видео ${i + 1} из ${_selectedFiles.length}...';
+            _compressProgress = 0;
+          });
+
+          final result = await VideoCompressionService.compressVideo(
+            File(file.path),
+            onProgress: (p) => setState(() => _compressProgress = p),
+          );
+
+          if (result.wasCompressed) {
+            processedFiles.add(XFile(result.file.path));
+            totalSaved += result.originalSize - result.compressedSize;
+            debugPrint('Video compressed: ${result.originalSizeMB}MB -> ${result.compressedSizeMB}MB (${result.compressionRatio.toStringAsFixed(1)}% saved)');
+          } else {
+            processedFiles.add(file);
+          }
+        } else {
+          processedFiles.add(file);
+        }
+      }
+
+      setState(() {
+        _isCompressing = false;
+        _compressStatus = '';
+        _compressProgress = 0;
+      });
+
       final service = Provider.of<OrderService>(context, listen: false);
       final success = await service.uploadOrder(
         widget.orderNumber,
-        _selectedFiles,
+        processedFiles,
         count: _appendMode ? 0 : _count,
         windowNumber: _windowNumber,
         appendMode: _appendMode,
       );
+
       if (mounted) {
         if (success) {
-          _showSnack('Заказ ${widget.orderNumber} (окно $_windowNumber) отправлен!', isError: false);
-          Future.delayed(const Duration(milliseconds: 1200), () => Navigator.pop(context));
+          final savedMB = (totalSaved / (1024 * 1024)).toStringAsFixed(1);
+          final msg = totalSaved > 0
+              ? 'Заказ ${widget.orderNumber} (окно $_windowNumber) отправлен! Сэкономлено: ${savedMB} МБ'
+              : 'Заказ ${widget.orderNumber} (окно $_windowNumber) отправлен!';
+          _showSnack(msg, isError: false);
+          Future.delayed(const Duration(milliseconds: 1500), () => Navigator.pop(context));
         } else {
           _showSnack(service.lastError ?? 'Ошибка сервера', isError: true);
         }
@@ -92,7 +137,12 @@ class _UploadScreenState extends State<UploadScreen> {
     } catch (e) {
       if (mounted) _showSnack('Ошибка: $e', isError: true);
     } finally {
-      if (mounted) setState(() => _isUploading = false);
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _isCompressing = false;
+        });
+      }
     }
   }
 
@@ -458,26 +508,78 @@ class _UploadScreenState extends State<UploadScreen> {
                 border: const Border(top: BorderSide(color: Color(0x1AFFFFFF))),
               ),
               child: SafeArea(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isUploading || _selectedFiles.isEmpty || _isChecking ? null : _uploadFiles,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
-                      disabledBackgroundColor: const Color(0xFF10B981).withOpacity(0.3),
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isCompressing) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF161B2E),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0x1AFFFFFF)),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xFF6366F1),
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _compressStatus,
+                                    style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                                  ),
+                                ),
+                                Text(
+                                  '${(_compressProgress * 100).toInt()}%',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF6366F1)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: _compressProgress,
+                                backgroundColor: const Color(0xFF0B0F19),
+                                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                                minHeight: 4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isUploading || _isCompressing || _selectedFiles.isEmpty || _isChecking ? null : _uploadFiles,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          disabledBackgroundColor: const Color(0xFF10B981).withOpacity(0.3),
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: _isUploading
+                            ? const SizedBox(
+                                width: 24, height: 24,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                              )
+                            : Text(
+                                _appendMode ? 'Добавить к заказу' : 'Отправить заказ',
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                              ),
+                      ),
                     ),
-                    child: _isUploading
-                        ? const SizedBox(
-                            width: 24, height: 24,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                          )
-                        : Text(
-                            _appendMode ? 'Добавить к заказу' : 'Отправить заказ',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                          ),
-                  ),
+                  ],
                 ),
               ),
             ),
