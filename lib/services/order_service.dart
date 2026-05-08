@@ -112,4 +112,18 @@ class OrderService extends ChangeNotifier {
       return false;
     }
   }
+
+  Future<Map<String, dynamic>> getDiskInfo() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_serverUrl/api/disk-info'),
+      ).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return {'total': 0, 'free': 0, 'used': 0, 'percentUsed': 0};
+    } catch (e) {
+      return {'total': 0, 'free': 0, 'used': 0, 'percentUsed': 0, 'error': e.toString()};
+    }
+  }
 }

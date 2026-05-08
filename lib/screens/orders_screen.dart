@@ -16,6 +16,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   bool _isLoading = true;
   String? _error;
   String _searchQuery = '';
+  Map<String, dynamic> _diskInfo = {};
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -34,14 +35,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
     setState(() { _isLoading = true; _error = null; });
     try {
       final service = Provider.of<OrderService>(context, listen: false);
-      final response = await http.get(
-        Uri.parse('${service.serverUrl}/api/orders'),
-      ).timeout(const Duration(seconds: 10));
+      final results = await Future.wait([
+        http.get(Uri.parse('${service.serverUrl}/api/orders')).timeout(const Duration(seconds: 10)),
+        service.getDiskInfo(),
+      ]);
+
+      final response = results[0] as http.Response;
+      final diskInfo = results[1] as Map<String, dynamic>;
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
           _orders = data['orders'] ?? [];
+          _diskInfo = diskInfo;
           _isLoading = false;
         });
       } else {
@@ -115,6 +121,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 onChanged: (val) => setState(() => _searchQuery = val),
               ),
             ),
+
+            const SizedBox(height: 12),
+
+            // Disk info
+            if (_diskInfo.isNotEmpty && _diskInfo['total'] != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _DiskInfoWidget(diskInfo: _diskInfo),
+              ),
 
             const SizedBox(height: 16),
 
@@ -436,6 +451,70 @@ class _DetailStat extends StatelessWidget {
             Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DiskInfoWidget extends StatelessWidget {
+  final Map<String, dynamic> diskInfo;
+
+  const _DiskInfoWidget({required this.diskInfo});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = (diskInfo['total'] as num?)?.toDouble() ?? 0;
+    final free = (diskInfo['free'] as num?)?.toDouble() ?? 0;
+    final used = (diskInfo['used'] as num?)?.toDouble() ?? 0;
+    final percentUsed = (diskInfo['percentUsed'] as num?)?.toInt() ?? 0;
+
+    final percentColor = percentUsed > 90
+        ? const Color(0xFFEF4444)
+        : percentUsed > 70
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFF10B981);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B2E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x1AFFFFFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.storage, color: Color(0xFF6366F1), size: 20),
+              const SizedBox(width: 8),
+              const Text('Место на диске', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFF1F5F9))),
+              const Spacer(),
+              Text('${free.toStringAsFixed(1)} ГБ свободно',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: percentColor)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: percentUsed / 100,
+              backgroundColor: const Color(0xFF0B0F19),
+              valueColor: AlwaysStoppedAnimation<Color>(percentColor),
+              minHeight: 6,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Использовано: ${used.toStringAsFixed(1)} ГБ',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+              Text('Всего: ${total.toStringAsFixed(1)} ГБ',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+            ],
+          ),
+        ],
       ),
     );
   }

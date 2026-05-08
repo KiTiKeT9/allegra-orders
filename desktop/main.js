@@ -221,7 +221,7 @@ async function startInternalServer() {
     },
     filename: (req, file, cb) => cb(null, file.originalname)
   });
-  const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 10 } });
+  const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 * 1024, files: 50 } });
 
   expressApp.post('/api/upload', upload.array('files'), (req, res) => {
     try {
@@ -339,6 +339,54 @@ async function startInternalServer() {
     res.json({ status: 'ok', orders_count: Object.keys(loadMetadata()).length });
   });
 
+  expressApp.get('/api/disk-info', async (req, res) => {
+    try {
+      const { execSync } = require('child_process');
+      const dataDir = getPaths().uploadDir;
+
+      let totalGB = 0;
+      let freeGB = 0;
+      let usedGB = 0;
+      let folderSizeGB = 0;
+
+      if (process.platform === 'win32') {
+        const drive = dataDir[0].toUpperCase() + ':\\';
+        const output = execSync(`wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /value`, { encoding: 'utf8' });
+        const lines = output.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('FreeSpace=')) {
+            freeGB = parseInt(line.split('=')[1]) / (1024 * 1024 * 1024);
+          }
+          if (line.startsWith('Size=')) {
+            totalGB = parseInt(line.split('=')[1]) / (1024 * 1024 * 1024);
+          }
+        }
+      } else {
+        const output = execSync(`df -B1 "${dataDir}" | tail -1`, { encoding: 'utf8' });
+        const parts = output.trim().split(/\s+/);
+        totalGB = parseInt(parts[1]) / (1024 * 1024 * 1024);
+        freeGB = parseInt(parts[3]) / (1024 * 1024 * 1024);
+      }
+
+      usedGB = totalGB - freeGB;
+
+      if (fs.existsSync(dataDir)) {
+        const output = execSync(`du -sb "${dataDir}" 2>/dev/null || echo 0`, { encoding: 'utf8' });
+        folderSizeGB = parseInt(output.split('\t')[0]) / (1024 * 1024 * 1024);
+      }
+
+      res.json({
+        total: Math.round(totalGB * 100) / 100,
+        free: Math.round(freeGB * 100) / 100,
+        used: Math.round(usedGB * 100) / 100,
+        folderSize: Math.round(folderSizeGB * 100) / 100,
+        percentUsed: totalGB > 0 ? Math.round((usedGB / totalGB) * 100) : 0
+      });
+    } catch (e) {
+      res.json({ total: 0, free: 0, used: 0, folderSize: 0, percentUsed: 0, error: e.message });
+    }
+  });
+
   const webDir = path.join(__dirname, '..', 'web');
   if (fs.existsSync(webDir)) {
     expressApp.use('/', express.static(webDir));
@@ -431,13 +479,37 @@ ipcMain.handle('open-orders-folder', async ()=>{ ensureDataDirs(); shell.openPat
 ipcMain.handle('open-order-folder', async (e,id)=>{
   const d=path.join(getPaths().uploadDir,id); if(!fs.existsSync(d)) fs.mkdirSync(d,{recursive:true}); shell.openPath(d); return {success:true};
 });
-ipcMain.handle('server-status', ()=>({
-  running:!!serverInstance,
-  url:`http://0.0.0.0:${currentPort}`,
-  addresses: serverAddresses.map(ip => `http://${ip}:${currentPort}`),
-  dataDir:CONFIG.dataDir,
-  logs:serverLogs
-}));
+ipcMain.handle('server-status', async () => {
+  const result = {
+    running: !!serverInstance,
+    url: `http://0.0.0.0:${currentPort}`,
+    addresses: serverAddresses.map(ip => `http://${ip}:${currentPort}`),
+    dataDir: CONFIG.dataDir,
+    logs: serverLogs
+  };
+
+  try {
+    const drive = CONFIG.dataDir[0].toUpperCase() + ':\\';
+    const { execSync } = require('child_process');
+    const output = execSync(`wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /value`, { encoding: 'utf8' });
+    const lines = output.split('\n');
+    let totalGB = 0, freeGB = 0;
+    for (const line of lines) {
+      if (line.startsWith('FreeSpace=')) freeGB = parseInt(line.split('=')[1]) / (1024 * 1024 * 1024);
+      if (line.startsWith('Size=')) totalGB = parseInt(line.split('=')[1]) / (1024 * 1024 * 1024);
+    }
+    result.disk = {
+      total: Math.round(totalGB * 100) / 100,
+      free: Math.round(freeGB * 100) / 100,
+      used: Math.round((totalGB - freeGB) * 100) / 100,
+      percentUsed: totalGB > 0 ? Math.round(((totalGB - freeGB) / totalGB) * 100) : 0
+    };
+  } catch (e) {
+    result.disk = { total: 0, free: 0, used: 0, percentUsed: 0, error: e.message };
+  }
+
+  return result;
+});
 ipcMain.handle('clear-logs', ()=>{ serverLogs.length=0; return true; });
 
 ipcMain.handle('get-app-version', () => {

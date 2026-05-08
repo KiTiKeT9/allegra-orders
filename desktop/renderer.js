@@ -255,6 +255,36 @@ async function updateServerInfo() {
             addrContainer.innerHTML = '<span class="server-status-value mono">http://localhost:' + (status.port || '8000') + '</span>';
         }
     }
+    if (status.disk) {
+        const diskContainer = document.getElementById('diskInfo');
+        if (diskContainer) {
+            const disk = status.disk;
+            const percentColor = disk.percentUsed > 90 ? 'var(--status-red)' : disk.percentUsed > 70 ? 'var(--status-yellow)' : 'var(--status-green)';
+            diskContainer.innerHTML = `
+                <div class="disk-info-grid">
+                    <div class="disk-stat">
+                        <span class="disk-label">Всего</span>
+                        <span class="disk-value">${disk.total} ГБ</span>
+                    </div>
+                    <div class="disk-stat">
+                        <span class="disk-label">Использовано</span>
+                        <span class="disk-value">${disk.used} ГБ</span>
+                    </div>
+                    <div class="disk-stat">
+                        <span class="disk-label">Свободно</span>
+                        <span class="disk-value" style="color: ${percentColor}">${disk.free} ГБ</span>
+                    </div>
+                    <div class="disk-stat">
+                        <span class="disk-label">Заполнено</span>
+                        <span class="disk-value" style="color: ${percentColor}">${disk.percentUsed}%</span>
+                    </div>
+                </div>
+                <div class="disk-progress-bar">
+                    <div class="disk-progress-fill" style="width: ${disk.percentUsed}%; background: ${percentColor}"></div>
+                </div>
+            `;
+        }
+    }
     const term = document.getElementById('serverLogs');
     if (term && term.children.length === 0 && status.logs) {
         status.logs.forEach(l => appendLog(l));

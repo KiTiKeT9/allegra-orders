@@ -178,6 +178,24 @@ async def health_check():
 async def get_version():
     return {"version": "1.0.0", "download_url": "https://github.com/KiTiKeT9/allegra-orders/releases/latest/download/Allegra-Scanner.apk"}
 
+@app.get("/api/disk-info")
+async def get_disk_info():
+    import shutil
+    total, used, free = shutil.disk_usage(UPLOAD_DIR.anchor)
+    folder_size = 0
+    if UPLOAD_DIR.exists():
+        for dirpath, dirnames, filenames in os.walk(UPLOAD_DIR):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                folder_size += os.path.getsize(fp)
+    return {
+        "total": round(total / (1024**3), 2),
+        "used": round(used / (1024**3), 2),
+        "free": round(free / (1024**3), 2),
+        "folderSize": round(folder_size / (1024**3), 2),
+        "percentUsed": round((used / total) * 100) if total > 0 else 0
+    }
+
 # --- МОНТИРОВАНИЕ ВЕБ-ИНТЕРФЕЙСА ---
 
 if WEB_DIR.exists():
