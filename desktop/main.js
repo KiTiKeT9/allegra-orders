@@ -407,16 +407,19 @@ async function startInternalServer() {
   serverInstance = require('http').createServer(expressApp);
   serverInstance.timeout = 0;
   serverInstance.keepAliveTimeout = 0;
-  serverInstance.listen(currentPort, '0.0.0.0', () => {
-    pushLog(`Сервер запущен на порту ${currentPort}`, 'info');
-    pushLog(`Available at: ${serverAddresses.join(', ')}`, 'info');
-    resolve();
-  });
 
-  serverInstance.on('error', (err) => {
-    pushLog('Server error: ' + err.message, 'error');
-    serverInstance = null;
-    resolve();
+  await new Promise((resolve, reject) => {
+    serverInstance.listen(currentPort, '0.0.0.0', () => {
+      pushLog(`Сервер запущен на порту ${currentPort}`, 'info');
+      pushLog(`Available at: ${serverAddresses.join(', ')}`, 'info');
+      resolve();
+    });
+
+    serverInstance.on('error', (err) => {
+      pushLog('Server error: ' + err.message, 'error');
+      serverInstance = null;
+      reject(err);
+    });
   });
 }
 
@@ -437,7 +440,9 @@ function createWindow() {
   mainWindow.loadFile('index.html');
   mainWindow.once('ready-to-show', () => mainWindow.show());
   loadConfig();
-  startInternalServer();
+  startInternalServer().catch(err => {
+    pushLog('Failed to start server: ' + err.message, 'error');
+  });
 }
 
 app.whenReady().then(() => {
