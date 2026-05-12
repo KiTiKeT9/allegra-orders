@@ -27,6 +27,8 @@ class _UploadScreenState extends State<UploadScreen> {
   bool _isCompressing = false;
   double _compressProgress = 0;
   String _compressStatus = '';
+  double _uploadProgress = 0;
+  String _uploadStatus = '';
   final TextEditingController _countController = TextEditingController(text: '1');
   final TextEditingController _windowController = TextEditingController(text: '1');
 
@@ -114,12 +116,27 @@ class _UploadScreenState extends State<UploadScreen> {
       });
 
       final service = Provider.of<OrderService>(context, listen: false);
+      setState(() {
+        _uploadStatus = 'Загрузка на сервер...';
+        _uploadProgress = 0;
+      });
+
       final success = await service.uploadOrder(
         widget.orderNumber,
         processedFiles,
         count: _appendMode ? 0 : _count,
         windowNumber: _windowNumber,
         appendMode: _appendMode,
+        onProgress: (progress, sent, total) {
+          if (mounted) {
+            setState(() {
+              _uploadProgress = progress;
+              final sentMB = (sent / (1024 * 1024)).toStringAsFixed(1);
+              final totalMB = (total / (1024 * 1024)).toStringAsFixed(1);
+              _uploadStatus = 'Загрузка: $sentMB / $totalMB МБ';
+            });
+          }
+        },
       );
 
       if (mounted) {
@@ -141,6 +158,8 @@ class _UploadScreenState extends State<UploadScreen> {
         setState(() {
           _isUploading = false;
           _isCompressing = false;
+          _uploadProgress = 0;
+          _uploadStatus = '';
         });
       }
     }
@@ -550,6 +569,53 @@ class _UploadScreenState extends State<UploadScreen> {
                                 value: _compressProgress,
                                 backgroundColor: const Color(0xFF0B0F19),
                                 valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                                minHeight: 4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (_isUploading) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF161B2E),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0x1AFFFFFF)),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xFF10B981),
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _uploadStatus,
+                                    style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                                  ),
+                                ),
+                                Text(
+                                  '${(_uploadProgress * 100).toInt()}%',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF10B981)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: _uploadProgress,
+                                backgroundColor: const Color(0xFF0B0F19),
+                                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
                                 minHeight: 4,
                               ),
                             ),

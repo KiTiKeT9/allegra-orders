@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:video_compress/video_compress.dart';
 
 class VideoCompressResult {
   final File file;
@@ -25,13 +26,7 @@ class VideoCompressResult {
 
 class VideoCompressionService {
   static const List<String> _compressibleFormats = [
-    '.mp4',
-    '.mov',
-    '.avi',
-    '.mkv',
-    '.m4v',
-    '.3gp',
-    '.webm',
+    '.mp4', '.mov', '.avi', '.mkv', '.m4v', '.3gp', '.webm',
   ];
 
   static bool isCompressible(String filePath) {
@@ -39,23 +34,14 @@ class VideoCompressionService {
     return _compressibleFormats.contains(ext);
   }
 
-  static bool _isLargeFile(String filePath) {
-    final file = File(filePath);
-    final sizeInBytes = file.lengthSync();
-    final sizeInMB = sizeInBytes / (1024 * 1024);
-    return sizeInMB > 50;
-  }
-
   static Future<VideoCompressResult> compressVideo(
     File sourceFile, {
     Function(double progress)? onProgress,
-    int quality = 23,
-    bool forceCompress = false,
   }) async {
     final originalSize = await sourceFile.length();
     final originalSizeMB = originalSize / (1024 * 1024);
 
-    if (!forceCompress && originalSizeMB < 50) {
+    if (originalSizeMB < 5) {
       return VideoCompressResult(
         file: sourceFile,
         originalSize: originalSize,
@@ -65,33 +51,33 @@ class VideoCompressionService {
     }
 
     try {
-      final tempDir = await getTemporaryDirectory();
-      final outputPath = path.join(
-        tempDir.path,
-        'compressed_${DateTime.now().millisecondsSinceEpoch}.mp4',
-      );
+      onProgress?.call(0.1);
 
-      final result = await _compressWithMediaKit(
+      final compressionQuality = _getCompressionQuality(originalSizeMB);
+
+      final MediaInfo? result = await VideoCompress.compressVideo(
         sourceFile.path,
-        outputPath,
-        quality: quality,
-        onProgress: onProgress,
-        originalSize: originalSize,
+        quality: compressionQuality,
+        deleteOrigin: false,
+        includeAudio: true,
       );
 
-      if (result != null) {
-        final compressedSize = await result.length();
+      onProgress?.call(0.9);
 
-        if (compressedSize < originalSize * 0.95) {
-          return VideoCompressResult(
-            file: result,
-            originalSize: originalSize,
-            compressedSize: compressedSize,
-            wasCompressed: true,
-          );
-        } else {
-          await result.delete();
-        }
+      if (result != null && result.file != null) {
+        final compressedFile = File(result.file!.path);
+        final compressedSize = await compressedFile.length();
+
+        debugPrint('Video compressed: ${originalSizeMB.toStringAsFixed(1)}MB -> ${(compressedSize / (1024 * 1024)).toStringAsFixed(1)}MB');
+
+        onProgress?.call(1.0);
+
+        return VideoCompressResult(
+          file: compressedFile,
+          originalSize: originalSize,
+          compressedSize: compressedSize,
+          wasCompressed: true,
+        );
       }
     } catch (e) {
       debugPrint('Video compression failed: $e');
@@ -105,60 +91,17 @@ class VideoCompressionService {
     );
   }
 
-  static Future<File?> _compressWithMediaKit(
-    String inputPath,
-    String outputPath, {
-    required int quality,
-    Function(double progress)? onProgress,
-    required int originalSize,
-  }) async {
-    try {
-      final process = await Process.start(
-        'ffmpeg',
-        [
-          '-i', inputPath,
-          '-c:v', 'libx264',
-          '-crf', quality.toString(),
-          '-preset', 'medium',
-          '-c:a', 'aac',
-          '-b:a', '128k',
-          '-movflags', '+faststart',
-          '-y',
-          outputPath,
-        ],
-      );
-
-      final exitCode = await process.exitCode;
-
-      if (exitCode == 0 && File(outputPath).existsSync()) {
-        return File(outputPath);
-      }
-    } catch (e) {
-      debugPrint('FFmpeg error: $e');
-    }
-    return null;
-  }
-
-  static Future<bool> isFFmpegAvailable() async {
-    try {
-      final result = await Process.run('ffmpeg', ['-version']);
-      return result.exitCode == 0;
-    } catch (e) {
-      return false;
+  static VideoQuality _getCompressionQuality(double sizeInMB) {
+    if (sizeInMB > 1000) {
+      return VideoQuality.LowQuality;
+    } else if (sizeInMB > 500) {
+      return VideoQuality.MediumQuality;
+    } else {
+      return VideoQuality.DefaultQuality;
     }
   }
 
-  static Future<void> cleanupTempFiles() async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final files = tempDir.listSync();
-      for (final file in files) {
-        if (file is File && file.path.contains('compressed_')) {
-          await file.delete();
-        }
-      }
-    } catch (e) {
-      debugPrint('Cleanup error: $e');
-    }
+  static Future<void> dispose() async {
+    await VideoCompress.deleteAllCache();
   }
 }

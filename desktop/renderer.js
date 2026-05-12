@@ -72,7 +72,12 @@ function switchTab(tab) {
     panel.offsetHeight; // force reflow
     panel.classList.add('active');
 
-    if (tab === 'server') updateServerInfo();
+    if (tab === 'server') {
+        updateServerInfo();
+        startDiskUpdateInterval();
+    } else {
+        stopDiskUpdateInterval();
+    }
 }
 
 /* ORDERS */
@@ -288,6 +293,46 @@ async function updateServerInfo() {
     const term = document.getElementById('serverLogs');
     if (term && term.children.length === 0 && status.logs) {
         status.logs.forEach(l => appendLog(l));
+    }
+
+    if (status.disk && !status.disk.error) {
+        updateDiskDisplay(status.disk);
+    }
+}
+
+function updateDiskDisplay(disk) {
+    const diskContainer = document.getElementById('diskInfo');
+    if (!diskContainer) return;
+    const percentColor = disk.percentUsed > 90 ? 'var(--status-red)' : disk.percentUsed > 70 ? 'var(--status-yellow)' : 'var(--status-green)';
+    diskContainer.innerHTML = `
+        <div class="disk-info-grid">
+            <div class="disk-stat"><span class="disk-label">Всего</span><span class="disk-value">${disk.total} ГБ</span></div>
+            <div class="disk-stat"><span class="disk-label">Использовано</span><span class="disk-value">${disk.used} ГБ</span></div>
+            <div class="disk-stat"><span class="disk-label">Свободно</span><span class="disk-value" style="color:${percentColor}">${disk.free} ГБ</span></div>
+            <div class="disk-stat"><span class="disk-label">Заполнено</span><span class="disk-value" style="color:${percentColor}">${disk.percentUsed}%</span></div>
+        </div>
+        <div class="disk-progress-bar"><div class="disk-progress-fill" style="width:${disk.percentUsed}%;background:${percentColor}"></div></div>
+    `;
+}
+
+let diskUpdateInterval = null;
+
+function startDiskUpdateInterval() {
+    if (diskUpdateInterval) clearInterval(diskUpdateInterval);
+    diskUpdateInterval = setInterval(async () => {
+        try {
+            const status = await ipcRenderer.invoke('server-status');
+            if (status.disk && !status.disk.error) {
+                updateDiskDisplay(status.disk);
+            }
+        } catch (e) {}
+    }, 30000);
+}
+
+function stopDiskUpdateInterval() {
+    if (diskUpdateInterval) {
+        clearInterval(diskUpdateInterval);
+        diskUpdateInterval = null;
     }
 }
 

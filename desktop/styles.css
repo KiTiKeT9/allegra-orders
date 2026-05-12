@@ -65,6 +65,10 @@ html, body {
     background: linear-gradient(135deg, var(--accent), #4f46e5);
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 1rem; color: white;
+}
+.logo-icon-img {
+    width: 36px; height: 36px; border-radius: 10px;
+    object-fit: cover;
     box-shadow: 0 4px 12px var(--accent-glow);
 }
 .logo-text { font-weight: 700; font-size: 1.1rem; letter-spacing: -0.02em; color: var(--text-main); }

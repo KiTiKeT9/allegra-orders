@@ -221,7 +221,7 @@ async function startInternalServer() {
     },
     filename: (req, file, cb) => cb(null, file.originalname)
   });
-  const upload = multer({ storage, limits: { fileSize: 2 * 1024 * 1024 * 1024, files: 50 } });
+  const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 * 1024, files: 100 } });
 
   expressApp.post('/api/upload', upload.array('files'), (req, res) => {
     try {
@@ -489,20 +489,21 @@ ipcMain.handle('server-status', async () => {
   };
 
   try {
-    const drive = CONFIG.dataDir[0].toUpperCase() + ':\\';
+    const drive = path.resolve(CONFIG.dataDir).substring(0, 2);
     const { execSync } = require('child_process');
-    const output = execSync(`wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /value`, { encoding: 'utf8' });
-    const lines = output.split('\n');
-    let totalGB = 0, freeGB = 0;
-    for (const line of lines) {
-      if (line.startsWith('FreeSpace=')) freeGB = parseInt(line.split('=')[1]) / (1024 * 1024 * 1024);
-      if (line.startsWith('Size=')) totalGB = parseInt(line.split('=')[1]) / (1024 * 1024 * 1024);
-    }
+    const output = execSync(
+      `(Get-PSDrive ${drive.replace('\\','')} | Select-Object Used,Free | ConvertTo-Json)`,
+      { encoding: 'utf8', shell: 'powershell.exe' }
+    );
+    const diskInfo = JSON.parse(output);
+    const usedBytes = diskInfo.Used || 0;
+    const freeBytes = diskInfo.Free || 0;
+    const totalBytes = usedBytes + freeBytes;
     result.disk = {
-      total: Math.round(totalGB * 100) / 100,
-      free: Math.round(freeGB * 100) / 100,
-      used: Math.round((totalGB - freeGB) * 100) / 100,
-      percentUsed: totalGB > 0 ? Math.round(((totalGB - freeGB) / totalGB) * 100) : 0
+      total: Math.round(totalBytes / (1024**3) * 100) / 100,
+      free: Math.round(freeBytes / (1024**3) * 100) / 100,
+      used: Math.round(usedBytes / (1024**3) * 100) / 100,
+      percentUsed: totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0
     };
   } catch (e) {
     result.disk = { total: 0, free: 0, used: 0, percentUsed: 0, error: e.message };

@@ -1,6 +1,6 @@
 {
   "name": "allegra-orders",
-  "version": "1.0.1",
+  "version": "1.0.5",
   "description": "Allegra Order Management System",
   "author": "Allegra Team",
   "main": "main.js",

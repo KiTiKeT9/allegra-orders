@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -44,7 +45,6 @@ class OrderService extends ChangeNotifier {
     }
   }
 
-  /// Returns {exists: bool, windowsCount: int}
   Future<Map<String, dynamic>> checkOrderExists(String orderNumber) async {
     try {
       final response = await http.get(
@@ -69,6 +69,7 @@ class OrderService extends ChangeNotifier {
     int count = 1,
     int windowNumber = 1,
     bool appendMode = false,
+    Function(double progress, int sent, int total)? onProgress,
   }) async {
     if (orderNumber.isEmpty || files.isEmpty) {
       _lastError = 'Номер заказа или файлы отсутствуют';
@@ -79,22 +80,36 @@ class OrderService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('$_serverUrl/api/upload'));
-      request.fields['order_number'] = orderNumber;
-      request.fields['count'] = count.toString();
-      request.fields['window_number'] = windowNumber.toString();
-      request.fields['append_mode'] = appendMode.toString();
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 30);
+      dio.options.receiveTimeout = const Duration(seconds: 900);
+      dio.options.sendTimeout = const Duration(seconds: 900);
 
+      final formData = FormData();
+      formData.fields.add(MapEntry('order_number', orderNumber));
+      formData.fields.add(MapEntry('count', count.toString()));
+      formData.fields.add(MapEntry('window_number', windowNumber.toString()));
+      formData.fields.add(MapEntry('append_mode', appendMode.toString()));
+
+      int totalBytes = 0;
       for (var file in files) {
-        request.files.add(await http.MultipartFile.fromPath(
+        final fileSize = await file.length();
+        totalBytes += fileSize;
+        formData.files.add(MapEntry(
           'files',
-          file.path,
-          filename: file.name,
+          await MultipartFile.fromFile(file.path, filename: file.name),
         ));
       }
 
-      var streamedResponse = await request.send().timeout(const Duration(seconds: 900));
-      var response = await http.Response.fromStream(streamedResponse);
+      final response = await dio.post(
+        '$_serverUrl/api/upload',
+        data: formData,
+        onSendProgress: (sent, total) {
+          if (total > 0 && onProgress != null) {
+            onProgress(sent / total, sent, total);
+          }
+        },
+      );
 
       _isUploading = false;
       notifyListeners();
