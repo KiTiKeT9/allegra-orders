@@ -221,7 +221,33 @@ class _UploadScreenState extends State<UploadScreen> {
                 child: Row(
                 children: [
                   GestureDetector(
-                    onTap: () => Navigator.pop(context),
+                    onTap: () async {
+                      if (_selectedFiles.isNotEmpty) {
+                        final result = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: const Color(0xFF161B2E),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            title: const Text('Отменить загрузку?', style: TextStyle(color: Color(0xFFF1F5F9))),
+                            content: const Text('Выбранные файлы будут потеряны.', style: TextStyle(color: Color(0xFF94A3B8))),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Остаться', style: TextStyle(color: Color(0xFF94A3B8))),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+                                child: const Text('Выйти'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (result == true && mounted) Navigator.of(context).pop();
+                      } else {
+                        Navigator.pop(context);
+                      }
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(

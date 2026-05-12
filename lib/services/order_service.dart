@@ -91,10 +91,7 @@ class OrderService extends ChangeNotifier {
       formData.fields.add(MapEntry('window_number', windowNumber.toString()));
       formData.fields.add(MapEntry('append_mode', appendMode.toString()));
 
-      int totalBytes = 0;
       for (var file in files) {
-        final fileSize = await file.length();
-        totalBytes += fileSize;
         formData.files.add(MapEntry(
           'files',
           await MultipartFile.fromFile(file.path, filename: file.name),
