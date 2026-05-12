@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -116,24 +116,27 @@ async def check_order(order_number: str):
             windows_count = max(windows_count, actual)
     return {"exists": exists, "windows_count": windows_count}
 
-@app.post("/api/upload")
-async def upload_files(
+async def validate_upload_form(
     order_number: str = Form(...),
     count: int = Form(0),
     window_number: int = Form(1),
     append_mode: bool = Form(False),
-    files: List[UploadFile] = File(...)
-):
+) -> UploadForm:
     try:
-        form = UploadForm(
+        return UploadForm(
             order_number=order_number,
             count=count,
             window_number=window_number,
             append_mode=append_mode,
         )
     except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Ошибка валидации: {e}")
+        raise HTTPException(status_code=422, detail=f"Валидация не пройдена: {e}")
 
+@app.post("/api/upload")
+async def upload_files(
+    form: UploadForm = Depends(validate_upload_form),
+    files: List[UploadFile] = File(...),
+):
     try:
         order_dir = UPLOAD_DIR / form.order_number
         order_dir.mkdir(parents=True, exist_ok=True)

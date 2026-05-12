@@ -2,4 +2,4 @@ fastapi
 uvicorn[standard]
 python-multipart
 pydantic
-filelock>=3.0.0
+filelock==3.13.1
