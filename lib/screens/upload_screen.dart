@@ -77,7 +77,7 @@ class _UploadScreenState extends State<UploadScreen> {
       _showSnack('Выберите файлы для загрузки', isError: true);
       return;
     }
-    setState(() => _isUploading = true);
+    setState(() => _isCompressing = true);
 
     try {
       final processedFiles = <XFile>[];
@@ -87,7 +87,6 @@ class _UploadScreenState extends State<UploadScreen> {
         final file = _selectedFiles[i];
         if (VideoCompressionService.isCompressible(file.path)) {
           setState(() {
-            _isCompressing = true;
             _compressStatus = 'Сжатие видео ${i + 1} из ${_selectedFiles.length}...';
             _compressProgress = 0;
           });
@@ -100,7 +99,7 @@ class _UploadScreenState extends State<UploadScreen> {
           if (result.wasCompressed) {
             processedFiles.add(XFile(result.file.path));
             totalSaved += result.originalSize - result.compressedSize;
-            debugPrint('Video compressed: ${result.originalSizeMB}MB -> ${result.compressedSizeMB}MB (${result.compressionRatio.toStringAsFixed(1)}% saved)');
+            debugPrint('Video compressed: ${result.originalSizeMB}MB -> ${result.compressedSizeMB}MB');
           } else {
             processedFiles.add(file);
           }
@@ -113,13 +112,12 @@ class _UploadScreenState extends State<UploadScreen> {
         _isCompressing = false;
         _compressStatus = '';
         _compressProgress = 0;
-      });
-
-      final service = Provider.of<OrderService>(context, listen: false);
-      setState(() {
+        _isUploading = true;
         _uploadStatus = 'Загрузка на сервер...';
         _uploadProgress = 0;
       });
+
+      final service = Provider.of<OrderService>(context, listen: false);
 
       final success = await service.uploadOrder(
         widget.orderNumber,
@@ -192,15 +190,35 @@ class _UploadScreenState extends State<UploadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0B0F19),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Row(
+    return PopScope(
+      canPop: _selectedFiles.isEmpty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (!didPop && _selectedFiles.isNotEmpty) {
+          final result = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xFF161B2E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text('Отменить загрузку?', style: TextStyle(color: Color(0xFFF1F5F9))),
+              content: const Text('Выбранные файлы будут потеряны.', style: TextStyle(color: Color(0xFF94A3B8))),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Остаться', style: TextStyle(color: Color(0xFF94A3B8)))),
+                ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)), child: const Text('Выйти')),
+              ],
+            ),
+          );
+          if (result == true && mounted) Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0B0F19),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Row(
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
@@ -377,7 +395,13 @@ class _UploadScreenState extends State<UploadScreen> {
                               keyboardType: TextInputType.number,
                               textAlign: TextAlign.center,
                               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFFF1F5F9)),
-                              onChanged: (val) => setState(() => _windowNumber = int.tryParse(val) ?? 1),
+                              onChanged: (val) => setState(() {
+                                _windowNumber = int.tryParse(val) ?? 1;
+                                if (_windowNumber < 1) {
+                                  _windowNumber = 1;
+                                  _windowController.text = '1';
+                                }
+                              }),
                               decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(vertical: 16)),
                             ),
                           ),
@@ -651,6 +675,7 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

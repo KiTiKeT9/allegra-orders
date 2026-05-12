@@ -24,7 +24,7 @@ class UpdateService {
   static const String _updateUrl = 'https://api.github.com/repos/KiTiKeT9/allegra-orders/releases/latest';
   static const String _releasesPageUrl = 'https://github.com/KiTiKeT9/allegra-orders/releases/latest';
   static const String _lastCheckKey = 'last_update_check';
-  static const Duration _checkInterval = Duration(hours: 1);
+  static const Duration _checkInterval = Duration(minutes: 30);
 
   static Future<UpdateInfo?> _fetchLatestRelease() async {
     try {

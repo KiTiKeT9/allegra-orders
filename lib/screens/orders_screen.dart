@@ -373,34 +373,57 @@ class _OrderDetailsSheet extends StatelessWidget {
             // Files list
             Expanded(
               child: files.isEmpty
-                  ? const Center(child: Text('Нет файлов', style: TextStyle(color: Color(0xFF64748B))))
+                  ? Center(
+                      child: ListView(
+                        controller: scrollController,
+                        children: [
+                          const SizedBox(height: 100),
+                          const Center(child: Text('Нет файлов', style: TextStyle(color: Color(0xFF64748B)))),
+                          if (notes.isNotEmpty) ...[
+                            const SizedBox(height: 24),
+                            const Text('Заметки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFFF1F5F9))),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: const Color(0xFF0B0F19), borderRadius: BorderRadius.circular(10)),
+                              child: Text(notes, style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8))),
+                            ),
+                          ],
+                        ],
+                      ),
+                    )
                   : ListView.builder(
                       controller: scrollController,
-                      itemCount: files.length,
+                      itemCount: files.length + (notes.isNotEmpty ? 1 : 0),
                       itemBuilder: (context, index) {
-                        final file = files[index].toString();
-                        final isVideo = file.endsWith('.mp4') || file.endsWith('.mov') || file.endsWith('.avi') || file.endsWith('.mkv');
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0B0F19),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
+                        if (index < files.length) {
+                          final file = files[index].toString();
+                          final isVideo = file.endsWith('.mp4') || file.endsWith('.mov') || file.endsWith('.avi') || file.endsWith('.mkv');
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: const Color(0xFF0B0F19), borderRadius: BorderRadius.circular(10)),
+                            child: Row(
+                              children: [
+                                Icon(isVideo ? Icons.videocam : Icons.image,
+                                    color: isVideo ? const Color(0xFF8B5CF6) : const Color(0xFF10B981), size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(child: Text(file.split('/').last, style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8)), overflow: TextOverflow.ellipsis)),
+                              ],
+                            ),
+                          );
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(
-                                isVideo ? Icons.videocam : Icons.image,
-                                color: isVideo ? const Color(0xFF8B5CF6) : const Color(0xFF10B981),
-                                size: 20,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  file.split('/').last,
-                                  style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8)),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                              const Text('Заметки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFFF1F5F9))),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(color: const Color(0xFF0B0F19), borderRadius: BorderRadius.circular(10)),
+                                child: Text(notes, style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8))),
                               ),
                             ],
                           ),
@@ -408,20 +431,6 @@ class _OrderDetailsSheet extends StatelessWidget {
                       },
                     ),
             ),
-
-            if (notes.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text('Заметки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFFF1F5F9))),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0B0F19),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(notes, style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8))),
-              ),
-            ],
           ],
         ),
       ),

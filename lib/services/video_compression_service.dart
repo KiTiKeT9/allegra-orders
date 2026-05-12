@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:video_compress/video_compress.dart';
@@ -50,8 +50,19 @@ class VideoCompressionService {
       );
     }
 
+    final stopwatch = Stopwatch()..start();
+    Timer? progressTimer;
+
     try {
-      onProgress?.call(0.1);
+      if (onProgress != null) {
+        onProgress(0);
+        progressTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+          final elapsed = timer.tick * 200 / 1000;
+          final estimatedTotal = originalSizeMB * 0.1;
+          final progress = (elapsed / estimatedTotal).clamp(0.0, 0.95);
+          onProgress(progress);
+        });
+      }
 
       final compressionQuality = _getCompressionQuality(originalSizeMB);
 
@@ -62,15 +73,13 @@ class VideoCompressionService {
         includeAudio: true,
       );
 
-      onProgress?.call(0.9);
+      progressTimer?.cancel();
+      stopwatch.stop();
+      onProgress?.call(1.0);
 
       if (result != null && result.file != null) {
         final compressedFile = File(result.file!.path);
         final compressedSize = await compressedFile.length();
-
-        debugPrint('Video compressed: ${originalSizeMB.toStringAsFixed(1)}MB -> ${(compressedSize / (1024 * 1024)).toStringAsFixed(1)}MB');
-
-        onProgress?.call(1.0);
 
         return VideoCompressResult(
           file: compressedFile,
@@ -80,7 +89,7 @@ class VideoCompressionService {
         );
       }
     } catch (e) {
-      debugPrint('Video compression failed: $e');
+      progressTimer?.cancel();
     }
 
     return VideoCompressResult(
