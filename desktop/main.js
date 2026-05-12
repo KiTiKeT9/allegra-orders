@@ -181,7 +181,7 @@ function isPortFree(port) {
         tester.close();
         resolve(true);
       })
-      .listen(port, '127.0.0.1');
+      .listen(port);
   });
 }
 
@@ -341,49 +341,46 @@ async function startInternalServer() {
 
   expressApp.get('/api/disk-info', async (req, res) => {
     try {
+      const { dataDir } = getPaths();
+      const checkPath = dataDir || 'C:\\';
+
       const { execSync } = require('child_process');
-      const dataDir = getPaths().uploadDir;
 
-      let totalGB = 0;
-      let freeGB = 0;
-      let usedGB = 0;
-      let folderSizeGB = 0;
+      let total = 0, free = 0, used = 0;
 
-      if (process.platform === 'win32') {
-        const drive = dataDir[0].toUpperCase() + ':\\';
-        const output = execSync(`wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /value`, { encoding: 'utf8' });
-        const lines = output.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('FreeSpace=')) {
-            freeGB = parseInt(line.split('=')[1]) / (1024 * 1024 * 1024);
-          }
-          if (line.startsWith('Size=')) {
-            totalGB = parseInt(line.split('=')[1]) / (1024 * 1024 * 1024);
+      try {
+        const drive = path.parse(checkPath).root.replace('\\', '');
+        const result = execSync(
+          `wmic logicaldisk where "DeviceID='${drive}'" get Size,FreeSpace /format:csv`,
+          { encoding: 'utf8', timeout: 5000 }
+        );
+        const lines = result.trim().split('\n').filter(l => l.includes(','));
+        if (lines.length > 0) {
+          const parts = lines[lines.length - 1].trim().split(',');
+          if (parts.length >= 3) {
+            free = parseInt(parts[1]) || 0;
+            total = parseInt(parts[2]) || 0;
+            used = total - free;
           }
         }
-      } else {
-        const output = execSync(`df -B1 "${dataDir}" | tail -1`, { encoding: 'utf8' });
-        const parts = output.trim().split(/\s+/);
-        totalGB = parseInt(parts[1]) / (1024 * 1024 * 1024);
-        freeGB = parseInt(parts[3]) / (1024 * 1024 * 1024);
+      } catch (e) {
+        pushLog('disk-info wmic error: ' + e.message, 'warn');
       }
 
-      usedGB = totalGB - freeGB;
-
-      if (fs.existsSync(dataDir)) {
-        const output = execSync(`du -sb "${dataDir}" 2>/dev/null || echo 0`, { encoding: 'utf8' });
-        folderSizeGB = parseInt(output.split('\t')[0]) / (1024 * 1024 * 1024);
-      }
+      const totalGB = parseFloat((total / (1024 ** 3)).toFixed(2));
+      const freeGB = parseFloat((free / (1024 ** 3)).toFixed(2));
+      const usedGB = parseFloat((used / (1024 ** 3)).toFixed(2));
+      const percentUsed = total > 0 ? Math.round((used / total) * 100) : 0;
 
       res.json({
-        total: Math.round(totalGB * 100) / 100,
-        free: Math.round(freeGB * 100) / 100,
-        used: Math.round(usedGB * 100) / 100,
-        folderSize: Math.round(folderSizeGB * 100) / 100,
-        percentUsed: totalGB > 0 ? Math.round((usedGB / totalGB) * 100) : 0
+        total: totalGB,
+        free: freeGB,
+        used: usedGB,
+        percentUsed
       });
     } catch (e) {
-      res.json({ total: 0, free: 0, used: 0, folderSize: 0, percentUsed: 0, error: e.message });
+      pushLog('disk-info error: ' + e.message, 'error');
+      res.json({ total: 0, free: 0, used: 0, percentUsed: 0, error: e.message });
     }
   });
 
@@ -407,18 +404,19 @@ async function startInternalServer() {
     }
   }
 
-  return new Promise((resolve) => {
-    serverInstance = expressApp.listen(currentPort, '0.0.0.0', () => {
-      pushLog(`Server running on port ${currentPort}`, 'info');
-      pushLog(`Available at: ${serverAddresses.join(', ')}`, 'info');
-      resolve();
-    });
+  serverInstance = require('http').createServer(expressApp);
+  serverInstance.timeout = 0;
+  serverInstance.keepAliveTimeout = 0;
+  serverInstance.listen(currentPort, '0.0.0.0', () => {
+    pushLog(`Сервер запущен на порту ${currentPort}`, 'info');
+    pushLog(`Available at: ${serverAddresses.join(', ')}`, 'info');
+    resolve();
+  });
 
-    serverInstance.on('error', (err) => {
-      pushLog('Server error: ' + err.message, 'error');
-      serverInstance = null;
-      resolve();
-    });
+  serverInstance.on('error', (err) => {
+    pushLog('Server error: ' + err.message, 'error');
+    serverInstance = null;
+    resolve();
   });
 }
 
