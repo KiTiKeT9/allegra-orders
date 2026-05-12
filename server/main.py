@@ -3,13 +3,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import List, Optional
+from pydantic import BaseModel, Field
 import os
 import shutil
+import logging
+import tempfile
 from datetime import datetime
 import json
 from pathlib import Path
+from filelock import FileLock
+
+logger = logging.getLogger("allegra-server")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 MAX_UPLOAD_SIZE = 500 * 1024 * 1024
+LOCK_PATH = Path(__file__).parent / "metadata.lock"
+meta_lock = FileLock(str(LOCK_PATH), timeout=30)
 
 class MaxBodySizeMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -17,6 +26,20 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
             request._body = await request.body()
         response = await call_next(request)
         return response
+
+class UploadForm(BaseModel):
+    order_number: str = Field(..., min_length=1, max_length=50)
+    count: int = Field(default=0, ge=0, le=9999)
+    window_number: int = Field(default=1, ge=1, le=9999)
+    append_mode: bool = False
+
+class UpdateStatsForm(BaseModel):
+    total_count: int = Field(default=0, ge=0, le=999999)
+    delivered: int = Field(default=0, ge=0, le=999999)
+    in_transit: int = Field(default=0, ge=0, le=999999)
+    damaged: int = Field(default=0, ge=0, le=999999)
+    issues: int = Field(default=0, ge=0, le=999999)
+    notes: str = Field(default="", max_length=1000)
 
 app = FastAPI(title="Order Management Server", version="2.3")
 app.add_middleware(MaxBodySizeMiddleware)
@@ -35,17 +58,41 @@ METADATA_FILE = BASE_DIR / "metadata.json"
 WEB_DIR = BASE_DIR.parent / "web"
 
 def load_metadata():
-    if METADATA_FILE.exists():
-        try:
-            with open(METADATA_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
+    try:
+        if not METADATA_FILE.exists():
             return {}
-    return {}
+        with open(METADATA_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        logger.error(f"Ошибка чтения metadata.json (повреждён): {e}")
+        return {}
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка при чтении metadata.json: {e}")
+        return {}
 
 def save_metadata(metadata):
-    with open(METADATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=2)
+    try:
+        tmp = tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding='utf-8',
+            dir=METADATA_FILE.parent,
+            delete=False,
+            suffix='.tmp'
+        )
+        try:
+            json.dump(metadata, tmp, ensure_ascii=False, indent=2)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        finally:
+            tmp.close()
+        os.replace(tmp.name, METADATA_FILE)
+    except Exception as e:
+        logger.error(f"Ошибка записи metadata.json: {e}")
+        if os.path.exists(tmp.name):
+            os.unlink(tmp.name)
+        raise
 
 def _count_window_folders(order_dir: Path) -> int:
     if not order_dir.exists():
@@ -56,17 +103,17 @@ def _count_window_folders(order_dir: Path) -> int:
 
 @app.get("/api/check-order/{order_number}")
 async def check_order(order_number: str):
-    metadata = load_metadata()
-    exists = order_number in metadata
-    windows_count = 0
-    if exists:
-        order_dir = UPLOAD_DIR / order_number
-        actual = _count_window_folders(order_dir)
-        windows_count = metadata[order_number].get("window_count", 0)
-        # fallback для старых заказов, созданных до появления window_count
-        if windows_count == 0:
-            windows_count = metadata[order_number].get("total_count", 0)
-        windows_count = max(windows_count, actual)
+    with meta_lock:
+        metadata = load_metadata()
+        exists = order_number in metadata
+        windows_count = 0
+        if exists:
+            order_dir = UPLOAD_DIR / order_number
+            actual = _count_window_folders(order_dir)
+            windows_count = metadata[order_number].get("window_count", 0)
+            if windows_count == 0:
+                windows_count = metadata[order_number].get("total_count", 0)
+            windows_count = max(windows_count, actual)
     return {"exists": exists, "windows_count": windows_count}
 
 @app.post("/api/upload")
@@ -78,60 +125,78 @@ async def upload_files(
     files: List[UploadFile] = File(...)
 ):
     try:
-        order_dir = UPLOAD_DIR / order_number
+        form = UploadForm(
+            order_number=order_number,
+            count=count,
+            window_number=window_number,
+            append_mode=append_mode,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Ошибка валидации: {e}")
+
+    try:
+        order_dir = UPLOAD_DIR / form.order_number
         order_dir.mkdir(parents=True, exist_ok=True)
 
-        window_dir = order_dir / f"Окно {window_number}"
+        window_dir = order_dir / f"Окно {form.window_number}"
         window_dir.mkdir(exist_ok=True)
 
         uploaded_files = []
         for file in files:
             file_path = window_dir / file.filename
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            try:
+                with open(file_path, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+            finally:
+                await file.close()
             uploaded_files.append(file.filename)
 
-        metadata = load_metadata()
-        timestamp = datetime.now().isoformat()
+        with meta_lock:
+            metadata = load_metadata()
+            timestamp = datetime.now().isoformat()
 
-        if order_number in metadata:
-            if not append_mode:
-                metadata[order_number]['total_count'] += count
-                metadata[order_number]['in_transit'] += count
-            actual = _count_window_folders(order_dir)
-            current_window_count = metadata[order_number].get('window_count', actual)
-            metadata[order_number]['window_count'] = max(current_window_count, actual, window_number)
-            metadata[order_number]['files'].extend(uploaded_files)
-            metadata[order_number]['updated_at'] = timestamp
-            metadata[order_number]['files_count'] = len(metadata[order_number]['files'])
-        else:
-            for i in range(1, count + 1):
-                (order_dir / f"Окно {i}").mkdir(exist_ok=True)
+            if form.order_number in metadata:
+                if not form.append_mode:
+                    metadata[form.order_number]['total_count'] += form.count
+                    metadata[form.order_number]['in_transit'] += form.count
+                actual = _count_window_folders(order_dir)
+                current_window_count = metadata[form.order_number].get('window_count', actual)
+                metadata[form.order_number]['window_count'] = max(current_window_count, actual, form.window_number)
+                metadata[form.order_number]['files'].extend(uploaded_files)
+                metadata[form.order_number]['updated_at'] = timestamp
+                metadata[form.order_number]['files_count'] = len(metadata[form.order_number]['files'])
+            else:
+                for i in range(1, form.count + 1):
+                    (order_dir / f"Окно {i}").mkdir(exist_ok=True)
 
-            actual = _count_window_folders(order_dir)
-            metadata[order_number] = {
-                "order_number": order_number,
-                "created_at": timestamp,
-                "updated_at": timestamp,
-                "total_count": count,
-                "delivered": 0,
-                "in_transit": count,
-                "damaged": 0,
-                "issues": 0,
-                "notes": "",
-                "files": uploaded_files,
-                "files_count": len(uploaded_files),
-                "window_count": max(count, actual, window_number)
-            }
-        save_metadata(metadata)
+                actual = _count_window_folders(order_dir)
+                metadata[form.order_number] = {
+                    "order_number": form.order_number,
+                    "created_at": timestamp,
+                    "updated_at": timestamp,
+                    "total_count": form.count,
+                    "delivered": 0,
+                    "in_transit": form.count,
+                    "damaged": 0,
+                    "issues": 0,
+                    "notes": "",
+                    "files": uploaded_files,
+                    "files_count": len(uploaded_files),
+                    "window_count": max(form.count, actual, form.window_number)
+                }
+            save_metadata(metadata)
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Upload error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/orders")
 async def get_orders():
-    metadata = load_metadata()
-    orders = list(metadata.values())
+    with meta_lock:
+        metadata = load_metadata()
+        orders = list(metadata.values())
     orders.sort(key=lambda x: x['created_at'], reverse=True)
     return {"orders": orders, "total": len(orders)}
 
@@ -145,34 +210,50 @@ async def update_order_stats(
     issues: int = Form(0),
     notes: str = Form("")
 ):
-    metadata = load_metadata()
-    if order_number not in metadata:
-        raise HTTPException(status_code=404, detail="Заказ не найден")
-    order = metadata[order_number]
-    order['total_count'] = total_count
-    order['delivered'] = delivered
-    order['in_transit'] = in_transit
-    order['damaged'] = damaged
-    order['issues'] = issues
-    order['notes'] = notes
-    order['updated_at'] = datetime.now().isoformat()
-    save_metadata(metadata)
+    try:
+        form = UpdateStatsForm(
+            total_count=total_count,
+            delivered=delivered,
+            in_transit=in_transit,
+            damaged=damaged,
+            issues=issues,
+            notes=notes,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Ошибка валидации: {e}")
+
+    with meta_lock:
+        metadata = load_metadata()
+        if order_number not in metadata:
+            raise HTTPException(status_code=404, detail="Заказ не найден")
+        order = metadata[order_number]
+        order['total_count'] = form.total_count
+        order['delivered'] = form.delivered
+        order['in_transit'] = form.in_transit
+        order['damaged'] = form.damaged
+        order['issues'] = form.issues
+        order['notes'] = form.notes
+        order['updated_at'] = datetime.now().isoformat()
+        save_metadata(metadata)
     return {"success": True}
 
 @app.delete("/api/orders/{order_number}")
 async def delete_order(order_number: str):
-    metadata = load_metadata()
-    if order_number in metadata:
-        order_dir = UPLOAD_DIR / order_number
-        if order_dir.exists():
-            shutil.rmtree(order_dir)
-        del metadata[order_number]
-        save_metadata(metadata)
+    with meta_lock:
+        metadata = load_metadata()
+        if order_number in metadata:
+            order_dir = UPLOAD_DIR / order_number
+            if order_dir.exists():
+                shutil.rmtree(order_dir)
+            del metadata[order_number]
+            save_metadata(metadata)
     return {"success": True}
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "orders_count": len(load_metadata())}
+    with meta_lock:
+        count = len(load_metadata())
+    return {"status": "ok", "orders_count": count}
 
 @app.get("/api/version")
 async def get_version():
@@ -180,7 +261,6 @@ async def get_version():
 
 @app.get("/api/disk-info")
 async def get_disk_info():
-    import shutil
     total, used, free = shutil.disk_usage(UPLOAD_DIR.anchor)
     folder_size = 0
     if UPLOAD_DIR.exists():
