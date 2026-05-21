@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OrderService extends ChangeNotifier {
@@ -136,6 +138,51 @@ class OrderService extends ChangeNotifier {
       return {'total': 0, 'free': 0, 'used': 0, 'percentUsed': 0};
     } catch (e) {
       return {'total': 0, 'free': 0, 'used': 0, 'percentUsed': 0, 'error': e.toString()};
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getOrderFiles(String orderNumber) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_serverUrl/api/files/$orderNumber'),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['files'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  String downloadUrl(String orderNumber, String filePath) {
+    return '$_serverUrl/api/download/$orderNumber/$filePath';
+  }
+
+  Future<String?> downloadFile(String orderNumber, String filePath, {Function(double)? onProgress}) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final saveDir = Directory('${dir.path}/downloads');
+      if (!await saveDir.exists()) await saveDir.create(recursive: true);
+
+      final fileName = filePath.split('/').last;
+      final savePath = '${saveDir.path}/$fileName';
+
+      final dio = Dio();
+      await dio.download(
+        downloadUrl(orderNumber, filePath),
+        savePath,
+        onReceiveProgress: (received, total) {
+          if (total > 0 && onProgress != null) {
+            onProgress(received / total);
+          }
+        },
+      );
+      return savePath;
+    } catch (e) {
+      _lastError = 'Download error: $e';
+      return null;
     }
   }
 }

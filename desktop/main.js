@@ -384,6 +384,55 @@ async function startInternalServer() {
     }
   });
 
+  expressApp.get('/api/files/:orderNumber', (req, res) => {
+    try {
+      const orderDir = path.join(uploadDir, req.params.orderNumber);
+      if (!fs.existsSync(orderDir)) {
+        return res.status(404).json({ detail: 'Order not found' });
+      }
+      const files = [];
+      const windows = fs.readdirSync(orderDir).filter(f => f.startsWith('window_'));
+      for (const w of windows) {
+        const wPath = path.join(orderDir, w);
+        if (!fs.statSync(wPath).isDirectory()) continue;
+        const entries = fs.readdirSync(wPath);
+        for (const entry of entries) {
+          const fullPath = path.join(wPath, entry);
+          const stat = fs.statSync(fullPath);
+          files.push({
+            name: entry,
+            path: `${w}/${entry}`,
+            window: w,
+            size: stat.size,
+            modified: stat.mtime.toISOString()
+          });
+        }
+      }
+      res.json({ files });
+    } catch (e) {
+      pushLog('files listing error: ' + e.message, 'error');
+      res.status(500).json({ detail: e.message });
+    }
+  });
+
+  expressApp.get('/api/download/:orderNumber/*', (req, res) => {
+    try {
+      const filePath = req.params[0];
+      const orderNumber = req.params.orderNumber;
+      const resolved = path.resolve(path.join(uploadDir, orderNumber, filePath));
+      if (!resolved.startsWith(path.resolve(uploadDir))) {
+        return res.status(403).json({ detail: 'Forbidden' });
+      }
+      if (!fs.existsSync(resolved)) {
+        return res.status(404).json({ detail: 'File not found' });
+      }
+      res.download(resolved);
+    } catch (e) {
+      pushLog('download error: ' + e.message, 'error');
+      res.status(500).json({ detail: e.message });
+    }
+  });
+
   const webDir = path.join(__dirname, '..', 'web');
   if (fs.existsSync(webDir)) {
     expressApp.use('/', express.static(webDir));

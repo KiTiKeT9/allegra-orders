@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:path_provider/path_provider.dart';
 import '../services/order_service.dart';
 
 class OrdersScreen extends StatefulWidget {
@@ -212,6 +214,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   void _showOrderDetails(Map<String, dynamic> order) {
+    final service = Provider.of<OrderService>(context, listen: false);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -219,7 +222,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => _OrderDetailsSheet(order: order),
+      builder: (context) => _OrderDetailsSheet(order: order, service: service),
     );
   }
 }
@@ -323,16 +326,71 @@ class _StatBadge extends StatelessWidget {
   }
 }
 
-class _OrderDetailsSheet extends StatelessWidget {
+class _OrderDetailsSheet extends StatefulWidget {
   final Map<String, dynamic> order;
+  final OrderService service;
 
-  const _OrderDetailsSheet({required this.order});
+  const _OrderDetailsSheet({required this.order, required this.service});
+
+  @override
+  State<_OrderDetailsSheet> createState() => _OrderDetailsSheetState();
+}
+
+class _OrderDetailsSheetState extends State<_OrderDetailsSheet> {
+  final Set<String> _downloadingFiles = {};
+  final Map<String, double> _downloadProgress = {};
+
+  Future<void> _downloadFile(String filePath) async {
+    if (_downloadingFiles.contains(filePath)) return;
+    setState(() {
+      _downloadingFiles.add(filePath);
+      _downloadProgress[filePath] = 0;
+    });
+    final orderNumber = widget.order['order_number'] ?? '';
+    final path = await widget.service.downloadFile(
+      orderNumber, filePath,
+      onProgress: (progress) {
+        if (mounted) setState(() => _downloadProgress[filePath] = progress);
+      },
+    );
+    if (mounted) {
+      setState(() {
+        _downloadingFiles.remove(filePath);
+        _downloadProgress.remove(filePath);
+      });
+      if (path != null) {
+        _openFile(path);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ошибка скачивания'), backgroundColor: Color(0xFFEF4444)),
+        );
+      }
+    }
+  }
+
+  Future<void> _openFile(String path) async {
+    final file = File(path);
+    if (await file.exists()) {
+      final dir = await getApplicationDocumentsDirectory();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Сохранено: ${path.split('/').last}'),
+          backgroundColor: const Color(0xFF10B981),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final orderNumber = order['order_number'] ?? '—';
-    final files = (order['files'] as List?) ?? [];
-    final notes = order['notes'] ?? '';
+    final orderNumber = widget.order['order_number'] ?? '—';
+    final files = (widget.order['files'] as List?) ?? [];
+    final notes = widget.order['notes'] ?? '';
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -360,9 +418,9 @@ class _OrderDetailsSheet extends StatelessWidget {
             // Stats
             Row(
               children: [
-                _DetailStat(label: 'Всего', value: '${order['total_count'] ?? 0}'),
-                _DetailStat(label: 'Разбито', value: '${order['damaged'] ?? 0}'),
-                _DetailStat(label: 'Проблемы', value: '${order['issues'] ?? 0}'),
+                _DetailStat(label: 'Всего', value: '${widget.order['total_count'] ?? 0}'),
+                _DetailStat(label: 'Разбито', value: '${widget.order['damaged'] ?? 0}'),
+                _DetailStat(label: 'Проблемы', value: '${widget.order['issues'] ?? 0}'),
               ],
             ),
 
@@ -396,22 +454,40 @@ class _OrderDetailsSheet extends StatelessWidget {
                       controller: scrollController,
                       itemCount: files.length + (notes.isNotEmpty ? 1 : 0),
                       itemBuilder: (context, index) {
-                        if (index < files.length) {
-                          final file = files[index].toString();
-                          final isVideo = file.endsWith('.mp4') || file.endsWith('.mov') || file.endsWith('.avi') || file.endsWith('.mkv');
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: const Color(0xFF0B0F19), borderRadius: BorderRadius.circular(10)),
-                            child: Row(
-                              children: [
-                                Icon(isVideo ? Icons.videocam : Icons.image,
-                                    color: isVideo ? const Color(0xFF8B5CF6) : const Color(0xFF10B981), size: 20),
-                                const SizedBox(width: 12),
-                                Expanded(child: Text(file.split('/').last, style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8)), overflow: TextOverflow.ellipsis)),
-                              ],
-                            ),
-                          );
+                          if (index < files.length) {
+                            final file = files[index].toString();
+                            final isVideo = file.endsWith('.mp4') || file.endsWith('.mov') || file.endsWith('.avi') || file.endsWith('.mkv');
+                            final isDownloading = _downloadingFiles.contains(file);
+                            final progress = _downloadProgress[file] ?? 0.0;
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: const Color(0xFF0B0F19), borderRadius: BorderRadius.circular(10)),
+                              child: Row(
+                                children: [
+                                  Icon(isVideo ? Icons.videocam : Icons.image,
+                                      color: isVideo ? const Color(0xFF8B5CF6) : const Color(0xFF10B981), size: 20),
+                                  const SizedBox(width: 12),
+                                  Expanded(child: Text(file.split('/').last, style: const TextStyle(fontSize: 14, color: Color(0xFF94A3B8)), overflow: TextOverflow.ellipsis)),
+                                  if (isDownloading)
+                                    SizedBox(
+                                      width: 20, height: 20,
+                                      child: CircularProgressIndicator(
+                                        value: progress > 0 ? progress : null,
+                                        strokeWidth: 2,
+                                        color: const Color(0xFF6366F1),
+                                      ),
+                                    )
+                                  else
+                                    IconButton(
+                                      icon: const Icon(Icons.download, color: Color(0xFF6366F1), size: 20),
+                                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                      padding: EdgeInsets.zero,
+                                      onPressed: () => _downloadFile(file),
+                                    ),
+                                ],
+                              ),
+                            );
                         }
                         return Padding(
                           padding: const EdgeInsets.only(top: 12),
